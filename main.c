@@ -117,9 +117,12 @@ void alarm_task(void *parameters)
 
     xEventGroupValue = xEventGroupWaitBits(Group, xBitsToWaitFor, pdTRUE, pdTRUE, portMAX_DELAY);
 
-    xSemaphoreTake(mutex, portMAX_DELAY);
-    PRINTF("ALARMA");
-    xSemaphoreGive(mutex);
+    if( (xEventGroupValue & BIT_SEGUNDOS) && (xEventGroupValue & BIT_MINUTOS) && (xEventGroupValue & BIT_HORAS)!= 0)
+    {
+		xSemaphoreTake(mutex, portMAX_DELAY);
+		PRINTF("ALARMA");
+		xSemaphoreGive(mutex);
+    }
   }
 }
 
