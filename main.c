@@ -11,7 +11,7 @@
 #include "peripherals.h"
 #include "pin_mux.h"
 #include "clock_config.h"
-#include "MKL43Z4.h"
+#include "MK66F18.h"
 #include "fsl_debug_console.h"
 /* TODO: insert other include files here. */
 #include "FreeRTOS.h"
@@ -26,9 +26,9 @@
 #define BIT_MINUTOS (1 << 1)
 #define BIT_HORAS (1 << 2)
 
-#define INIT_SECONDS	17
-#define INIT_MINUTES	33
-#define INIT_HOURS		18
+#define INIT_SECONDS	56
+#define INIT_MINUTES	59
+#define INIT_HOURS		14
 
 typedef enum
 {
@@ -65,16 +65,18 @@ QueueHandle_t Queue;
 EventGroupHandle_t Group;
 
 SemaphoreHandle_t mutex;
+
+alarm_t alarm;
 /*
  * @brief   Application entry point.
  */
 int main(void)
 {
-	alarm_t alarm;
+
 
 	alarm.seconds = 0;
 	alarm.minutes = 0;
-	alarm.hours = 0;
+	alarm.hours = 15;
 
   	/* Init board hardware. */
     BOARD_InitBootPins();
@@ -98,6 +100,7 @@ int main(void)
 
     Group = xEventGroupCreate();
 
+    vTaskStartScheduler();
 
     /* Force the counter to be placed into memory. */
     volatile static int i = 0 ;
@@ -121,7 +124,7 @@ void alarm_task(void *parameters)
 
 		xEventGroupValue = xEventGroupWaitBits(Group, xBitsToWaitFor, pdTRUE, pdTRUE, portMAX_DELAY);
 
-		if( (xEventGroupValue & BIT_SEGUNDOS) && (xEventGroupValue & BIT_MINUTOS) && (xEventGroupValue & BIT_HORAS)!= 0)
+		if( (xEventGroupValue & BIT_SEGUNDOS) && (xEventGroupValue & BIT_MINUTOS) && (xEventGroupValue & BIT_HORAS))
 		{
 			xSemaphoreTake(mutex, portMAX_DELAY);
 			PRINTF("ALARMA");
@@ -132,15 +135,19 @@ void alarm_task(void *parameters)
 
 void print_task(void *parameters)
 {
+	//time_msg_t *time_msg;
 	time_msg_t incoming_msg;
 	uint8_t seconds = INIT_SECONDS;
 	uint8_t minutes = INIT_MINUTES;
 	uint8_t hours = INIT_HOURS;
 	
+	//time_msg = &incoming_msg;
+
+
 	for(;;)
 	{
 		//If Queue is empty wait until its not. 
-		if(xQueueReceive( Queue, incoming_msg, portMAX_DELAY))
+		if(xQueueReceive(Queue, &incoming_msg, portMAX_DELAY))
 		{
 			switch(incoming_msg.time_type)
 			{
@@ -165,6 +172,9 @@ void print_task(void *parameters)
 
 void second_task(void *parameters)
 {
+	time_msg_t outcoming_msg;
+	outcoming_msg.time_type = seconds_type;
+
 	uint8_t counter_seconds = INIT_SECONDS;
 	TickType_t  xLastWakeTime = xTaskGetTickCount();
 
@@ -173,23 +183,31 @@ void second_task(void *parameters)
 	while(true)
 	{
 		vTaskDelayUntil(&xLastWakeTime,xfactor);
-
 		counter_seconds++;
-
 		if(counter_seconds >= 60)
 		{
 			counter_seconds = 0;
 			xSemaphoreGive(Seconds);
 		}
 
+		outcoming_msg.value = counter_seconds;
+
 		//Send new seconds value to time_queue
-		xQueueSendToBack( Queue, &counter_seconds, portMAX_DELAY);
+		xQueueSendToBack(Queue, &outcoming_msg, portMAX_DELAY);
+
+		if(alarm.seconds == counter_seconds)
+		{
+			xEventGroupSetBits(Group, BIT_SEGUNDOS);
+		}
 	}
 }
 
 void minute_task(void *parameters)
 {
 	uint8_t counter_minutes = INIT_MINUTES;
+
+	time_msg_t outcoming_msg;
+	outcoming_msg.time_type = minutes_type;
 
 	while(true)
 	{
@@ -203,15 +221,24 @@ void minute_task(void *parameters)
 			xSemaphoreGive(Minutes);
 		}
 
-		//Send new minutes value to time_queue
-		xQueueSendToBack( Queue, &counter_minutes, portMAX_DELAY);
+		outcoming_msg.value = counter_minutes;
 
+		//Send new minutes value to time_queue
+		xQueueSendToBack( Queue, &outcoming_msg, portMAX_DELAY);
+
+		if(alarm.minutes == counter_minutes)
+		{
+			xEventGroupSetBits(Group, BIT_MINUTOS);
+		}
 	}
 }
 
 void hour_task(void *parameters)
 {
 	uint8_t counter_hours = INIT_HOURS;
+
+	time_msg_t outcoming_msg;
+	outcoming_msg.time_type = hours_type;
 
 	while(true)
 	{
@@ -223,8 +250,15 @@ void hour_task(void *parameters)
 			counter_hours = 0;
 		}
 
+		outcoming_msg.value = counter_hours;
+
 		//Send new hours value to time_queue
-		xQueueSendToBack( Queue, &counter_hours, portMAX_DELAY);
+		xQueueSendToBack( Queue, &outcoming_msg, portMAX_DELAY);
+
+		if(alarm.hours == counter_hours)
+		{
+			xEventGroupSetBits(Group, BIT_HORAS);
+		}
 
 	}
 }
